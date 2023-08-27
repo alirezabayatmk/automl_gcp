@@ -7,7 +7,6 @@ from typing import Any, Mapping, Optional
 from functools import partial
 import time
 import json 
-import os
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -273,8 +272,8 @@ def cnn_from_cfg_mf(
     ds_path = cfg["datasetpath"]
 
     # determine fidelity and used budget
-    img_size = int(np.floor(budget)) if fidelity == "img_size" else 16
-    epochs = int(np.floor(budget)) if fidelity == "epochs" else 10
+    img_size = int(np.floor(budget)) if fidelity == "img_size" else 32
+    epochs = int(np.floor(budget)) if fidelity == "epochs" else 20
 
     # Device configuration
     torch.manual_seed(seed)
@@ -367,7 +366,6 @@ def plot_main_trajectory(facades: list[AbstractFacade], plot_name: str = 'epoch'
     plt.figure()
     plt.title("Trajectory")
     plt.xlabel("Wallclock time [s]")
-    plt.ylabel(facades[0].scenario.objectives)
 
     for facade in facades:
         X, Y = [], []
@@ -393,6 +391,7 @@ def plot_optuna_trajectories(dictionary):
     plt.figure()
     plt.title("Trajectories")
     plt.xlabel("Wallclock time [s]")
+
 
     for trial_key, data in dictionary.items():
         trial_no = data['trial_no']
@@ -423,7 +422,6 @@ def plot_seeds_trajectory(results_per_seed: dict) -> None:
     plt.title("Trajectory")
     plt.xlabel("Wallclock time [s]")
     plt.ylabel(next(iter(results_per_seed.values())).scenario.objectives)  # cost
-    plt.ylim(0.3, 0.8)
 
     for (seed, budget_type), facade in results_per_seed.items():
         logging.info(f"facades {seed} and budget type {budget_type}")
@@ -447,16 +445,16 @@ def plot_seeds_trajectory(results_per_seed: dict) -> None:
 
 def train_mf_selection(cs: ConfigurationSpace) -> None:
     results_per_seed = {}
-    fidelity_budgets = {'img_size': (8, 16), 'epochs': (5, 10)}
+    fidelity_budgets = {'img_size': (8, 32), 'epochs': (5, 20)}
 
-    for seed in range(2):
+    for seed in range(3):
         for fidelity, budgets in fidelity_budgets.items():
 
             logging.info(f"Budget type: {fidelity} - Seed: {seed}")
 
             scenario = Scenario(
                 configspace=cs,
-                walltime_limit=360,
+                walltime_limit=300,
                 n_trials=100,
                 deterministic=True,
                 output_directory=Path("./tmp"),
@@ -607,6 +605,8 @@ def final_training(
 
     return test_score
 
+
+
 if __name__ == "__main__":
 
 
@@ -638,7 +638,7 @@ if __name__ == "__main__":
         "--max_budget",
         type=float,
         default=20,
-        help="maximal budget (image_size) to use with BOHB",
+        help="maximal budget (epochs) to use with BOHB",
     )
     parser.add_argument(
         "--min_budget", type=float, default=5, help="Minimum budget (epochs) for BOHB"
@@ -786,38 +786,33 @@ if __name__ == "__main__":
         raise e
     
 
-    try:
-        # Check if the directory exists, create it if not
-        directory = "visualizations"
-        if not os.path.exists(directory):
-            os.makedirs(directory)
-        
+    try:       
         plot_optuna_trajectories(optuna_viz_dic)
 
         # creating optuna hyperparameter optimization progress plots
         fig = optuna.visualization.plot_contour(study)
         fig.show()
-        fig.write_image(os.path.join(directory, "optuna_contour.png"))
+        fig.write_image("optuna_contour.png")
 
         fig = optuna.visualization.plot_optimization_history(study)
         fig.show()
-        fig.write_image(os.path.join(directory, "optuna_optimization_history.png"))
+        fig.write_image("optuna_optimization_history.png")
 
         fig = optuna.visualization.plot_timeline(study)
         fig.show()
-        fig.write_image(os.path.join(directory, "optuna_timeline.png"))
+        fig.write_image("optuna_timeline.png")
 
         fig = optuna.visualization.plot_param_importances(study)
         fig.show()
-        fig.write_image(os.path.join(directory, "optuna_param_importances.png"))
+        fig.write_image("optuna_param_importances.png")
 
         fig = optuna.visualization.plot_parallel_coordinate(study)
         fig.show()
-        fig.write_image(os.path.join(directory, "optuna_parallel_coordinate.png"))
+        fig.write_image("optuna_parallel_coordinate.png")
 
         fig = optuna.visualization.plot_edf([study])
         fig.show()
-        fig.write_image(os.path.join(directory, "optuna_edf.png"))
+        fig.write_image("optuna_edf.png")
 
         print("--- Optuna optimization took: %s seconds ---" % (time.time() - start_time))
 
@@ -880,6 +875,7 @@ if __name__ == "__main__":
         logging.error(f"Error in final SMAC optimization: {e}")
         raise e
 
+    
     try:
         # train the final CNN model with the best incumbent
         start_time = time.time()
