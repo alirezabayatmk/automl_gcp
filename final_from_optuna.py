@@ -571,7 +571,7 @@ if __name__ == "__main__":
         # create Optuna study object and optimize the objective function
         logging.info("Optuna Optimization started")
         study = optuna.create_study(direction="minimize", study_name="SMAC_HPO")
-        study.optimize(objective, n_trials=20, n_jobs=-1)
+        study.optimize(objective, n_trials=20, n_jobs=4)
 
         best_params = study.best_params
         logging.info(f"Best optuna parameters: {best_params}")
