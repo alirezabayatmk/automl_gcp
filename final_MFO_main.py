@@ -105,6 +105,7 @@ def configuration_space(
 
     return cs
 
+
 def get_optimizer_and_criterion(
         cfg: Mapping[str, Any]
 ) -> tuple[
@@ -123,9 +124,11 @@ def get_optimizer_and_criterion(
 
     return model_optimizer, train_criterion
 
+
 def cnn_from_cfg(
         cfg: Configuration,
         seed: int,
+        fidelity: str,
         budget: float,
 ) -> float:
     """
@@ -158,7 +161,8 @@ def cnn_from_cfg(
     ds_path = cfg["datasetpath"]
 
     # determine fidelity and used budget
-    epochs = int(np.floor(budget)) 
+    img_size = int(np.floor(budget)) if fidelity == "img_size" else 32
+    epochs = int(np.floor(budget)) if fidelity == "epochs" else 20
 
     # Device configuration
     torch.manual_seed(seed)
@@ -169,7 +173,7 @@ def cnn_from_cfg(
     elif "deepweedsx" in dataset:
         input_shape, train_val, _ = load_deep_woods(
             datadir=Path(ds_path, "deepweedsx"),
-            resize=(16, 16),
+            resize=(img_size, img_size),
             balanced="balanced" in dataset,
             download=download,
         )
@@ -355,6 +359,7 @@ def optimize_smac_hyperparameters(trial):
         "min_samples_leaf": min_samples_leaf,
     }
 
+
 def plot_main_trajectory(facades: list[AbstractFacade], plot_name: str = 'epoch') -> None:
     """Plots the trajectory (incumbents) of the optimization process."""
     plt.figure()
@@ -379,6 +384,7 @@ def plot_main_trajectory(facades: list[AbstractFacade], plot_name: str = 'epoch'
     plt.legend()
     plt.show()
     plt.savefig(f"visualizations/trajectory_{plot_name}.png")
+
 
 def plot_optuna_trajectories(dictionary):
     plt.figure()
@@ -478,6 +484,7 @@ def train_mf_selection(cs: ConfigurationSpace) -> None:
     plot_seeds_trajectory(results_per_seed)
     # get_best_fidelity(facades_list, list(fidelity_budgets.keys()))
     return
+
 
 def final_training(
         cfg: Configuration,
@@ -622,7 +629,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--runtime",
-        default=15000,
+        default=12000,
         type=int,
         help="Running time (seconds) allocated to run the algorithm",
     )
@@ -691,8 +698,26 @@ if __name__ == "__main__":
     #                                 Plot Multi-fidelity plot                                                      #
     #################################################################################################################
 
+    try:
+        start_time = time.time()
 
+        minimal_configspace = configuration_space(
+            device=args.device,
+            dataset=args.dataset,
+            cv_count=args.cv_count,
+            datasetpath=args.datasetpath,
+            cs_file=Path("minimal_configspace.json")
+        )
 
+        # train_mf_selection(minimal_configspace)
+        best_fidelity = "epochs"
+
+        logging.info(f"Best fidelity: {best_fidelity}")
+        logging.info(f"--- Multi-fidelity selection took: {time.time() - start_time} seconds ---")
+
+    except Exception as e:
+        logging.error(f"Error in multi-fidelity selection: {e}")
+        raise e
 
     #################################################################################################################
     #                                 OPTUNA optimization process and visualizations                                #
@@ -719,7 +744,7 @@ if __name__ == "__main__":
             )
 
             smac = SMAC4MF(
-                target_function=cnn_from_cfg,
+                target_function=partial(cnn_from_cfg, fidelity=best_fidelity),
                 scenario=scenario,
                 initial_design=SMAC4MF.get_initial_design(scenario=scenario, n_configs=3),
                 intensifier=Hyperband(
@@ -819,7 +844,7 @@ if __name__ == "__main__":
         )
 
         best_smac = SMAC4MF(
-            target_function=cnn_from_cfg,
+            target_function=partial(cnn_from_cfg, fidelity=best_fidelity),
             scenario=best_scenario,
             initial_design=SMAC4MF.get_initial_design(scenario=best_scenario, n_configs=3),
             intensifier=Hyperband(
