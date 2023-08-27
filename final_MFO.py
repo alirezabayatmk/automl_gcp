@@ -462,7 +462,7 @@ def train_mf_selection(cs: ConfigurationSpace) -> None:
                 output_directory=Path("./tmp"),
                 min_budget=budgets[0],
                 max_budget=budgets[1],
-                n_workers=10,
+                n_workers=20,
                 seed=seed,  # Use a different seed for each run
                 name=f"MFO({fidelity}_Seed{seed})"
             )
@@ -649,7 +649,7 @@ if __name__ == "__main__":
         "--device", type=str, default="cpu", help="device to run the models"
     )
     parser.add_argument(
-        "--workers", type=int, default=16, help="num of workers to use with BOHB"
+        "--workers", type=int, default=20, help="num of workers to use with BOHB"
     )
     parser.add_argument(
         "--n_trials", type=int, default=500, help="Number of iterations to run SMAC for"
@@ -699,165 +699,193 @@ if __name__ == "__main__":
     #                                 Plot Multi-fidelity plot                                                      #
     #################################################################################################################
 
+    try:
+        start_time = time.time()
 
-    minimal_configspace = configuration_space(
-        device=args.device,
-        dataset=args.dataset,
-        cv_count=args.cv_count,
-        datasetpath=args.datasetpath,
-        cs_file=Path("minimal_configspace.json")
-    )
+        minimal_configspace = configuration_space(
+            device=args.device,
+            dataset=args.dataset,
+            cv_count=args.cv_count,
+            datasetpath=args.datasetpath,
+            cs_file=Path("minimal_configspace.json")
+        )
 
-    train_mf_selection(minimal_configspace)
-    best_fidelity = "epochs"
+        train_mf_selection(minimal_configspace)
+        best_fidelity = "epochs"
 
-    print("--- Multi-fidelity selection took: %s seconds ---" % (time.time() - start_time))
+        print("--- Multi-fidelity selection took: %s seconds ---" % (time.time() - start_time))
+
+    except Exception as e:
+        logging.error(f"Error in multi-fidelity selection: {e}")
+        raise e
 
     #################################################################################################################
     #                                 OPTUNA optimization process and visualizations                                #
     #################################################################################################################    
 
-    start_time = time.time()
+    try:
+        start_time = time.time()
 
-    # Optuna applied for optimizing the hyperparameters of the random forest model of SMAC
-    def objective(trial):
-        rf_params = optimize_smac_hyperparameters(trial)
+        # Optuna applied for optimizing the hyperparameters of the random forest model of SMAC
+        def objective(trial):
+            rf_params = optimize_smac_hyperparameters(trial)
 
-        scenario = Scenario(
-            name="OptunaSMAC",
-            configspace=configspace,
-            deterministic=True,
-            output_directory=args.working_dir,
-            seed=args.seed,
-            n_trials=100,
-            max_budget=args.max_budget,
-            min_budget=args.min_budget,
-            n_workers=16,
-            walltime_limit=180,
-        )
+            scenario = Scenario(
+                name="OptunaSMAC",
+                configspace=configspace,
+                deterministic=True,
+                output_directory=args.working_dir,
+                seed=args.seed,
+                n_trials=100,
+                max_budget=args.max_budget,
+                min_budget=args.min_budget,
+                n_workers=20,
+                walltime_limit=180,
+            )
 
-        smac = SMAC4MF(
-            target_function=partial(cnn_from_cfg, fidelity=best_fidelity),
-            scenario=scenario,
-            initial_design=SMAC4MF.get_initial_design(scenario=scenario, n_configs=3),
-            intensifier=Hyperband(
+            smac = SMAC4MF(
+                target_function=partial(cnn_from_cfg, fidelity=best_fidelity),
                 scenario=scenario,
-                incumbent_selection="highest_budget",
-                eta=2,
-            ),
-            model=SMAC4MF.get_model(scenario, **rf_params),
-            overwrite=True,
-            logging_level=args.log_level,  
-        )
+                initial_design=SMAC4MF.get_initial_design(scenario=scenario, n_configs=3),
+                intensifier=Hyperband(
+                    scenario=scenario,
+                    incumbent_selection="highest_budget",
+                    eta=2,
+                ),
+                model=SMAC4MF.get_model(scenario, **rf_params),
+                overwrite=True,
+                logging_level=args.log_level,  
+            )
 
-        incumbent = smac.optimize()
-        optuna_facades.append(smac)
+            incumbent = smac.optimize()
+            optuna_facades.append(smac)
 
-        return smac.validate(incumbent)
+            return smac.validate(incumbent)
+        
+        
+        # create Optuna study object and optimize the objective function
+        print("Optuna Optimization started")
+        study = optuna.create_study(direction="minimize", study_name="SMAC_HPO")
+        study.optimize(objective, n_trials=20, n_jobs=-1)
+
+        best_params = study.best_params
+        print("Best Optuna Parameters:", best_params)
+
+        with open(Path(args.working_dir, "optuna_best_params.json"), "w") as fh:
+            json.dump(best_params, fh)
+
+        optuna_viz_dic = {}
+        for smc_obj, trial in zip(optuna_facades, study.trials):
+            optuna_viz_dic['trial_no'] = trial.number
+            optuna_viz_dic['trial_params'] = trial.params
+            optuna_viz_dic['trajectory'] = smc_obj
+
+
+    except Exception as e:
+        logging.error(f"Error in Optuna optimization: {e}")
+        raise e
     
-    
-    # create Optuna study object and optimize the objective function
-    print("Optuna Optimization started")
-    study = optuna.create_study(direction="minimize", study_name="SMAC_HPO")
-    study.optimize(objective, n_trials=20, n_jobs=-1)
 
-    best_params = study.best_params
-    print("Best Optuna Parameters:", best_params)
+    try:
+        # Check if the directory exists, create it if not
+        directory = "visualizations"
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+        
+        plot_optuna_trajectories(optuna_viz_dic)
 
-    with open(Path(args.working_dir, "optuna_best_params.json"), "w") as fh:
-        json.dump(best_params, fh)
+        # creating optuna hyperparameter optimization progress plots
+        fig = optuna.visualization.plot_contour(study)
+        fig.show()
+        fig.write_image(os.path.join(directory, "optuna_contour.png"))
 
-    optuna_viz_dic = {}
-    for smc_obj, trial in zip(optuna_facades, study.trials):
-        optuna_viz_dic['trial_no'] = trial.number
-        optuna_viz_dic['trial_params'] = trial.params
-        optuna_viz_dic['trajectory'] = smc_obj
+        fig = optuna.visualization.plot_optimization_history(study)
+        fig.show()
+        fig.write_image(os.path.join(directory, "optuna_optimization_history.png"))
 
-    # Check if the directory exists, create it if not
-    directory = "visualizations"
-    if not os.path.exists(directory):
-        os.makedirs(directory)
-    
-    plot_optuna_trajectories(optuna_viz_dic)
+        fig = optuna.visualization.plot_timeline(study)
+        fig.show()
+        fig.write_image(os.path.join(directory, "optuna_timeline.png"))
 
-    # creating optuna hyperparameter optimization progress plots
-    fig = optuna.visualization.plot_contour(study)
-    fig.show()
-    fig.write_image(os.path.join(directory, "optuna_contour.png"))
+        fig = optuna.visualization.plot_param_importances(study)
+        fig.show()
+        fig.write_image(os.path.join(directory, "optuna_param_importances.png"))
 
-    fig = optuna.visualization.plot_optimization_history(study)
-    fig.show()
-    fig.write_image(os.path.join(directory, "optuna_optimization_history.png"))
+        fig = optuna.visualization.plot_parallel_coordinate(study)
+        fig.show()
+        fig.write_image(os.path.join(directory, "optuna_parallel_coordinate.png"))
 
-    fig = optuna.visualization.plot_timeline(study)
-    fig.show()
-    fig.write_image(os.path.join(directory, "optuna_timeline.png"))
+        fig = optuna.visualization.plot_edf([study])
+        fig.show()
+        fig.write_image(os.path.join(directory, "optuna_edf.png"))
 
-    fig = optuna.visualization.plot_param_importances(study)
-    fig.show()
-    fig.write_image(os.path.join(directory, "optuna_param_importances.png"))
+        print("--- Optuna optimization took: %s seconds ---" % (time.time() - start_time))
 
-    fig = optuna.visualization.plot_parallel_coordinate(study)
-    fig.show()
-    fig.write_image(os.path.join(directory, "optuna_parallel_coordinate.png"))
-
-    fig = optuna.visualization.plot_edf([study])
-    fig.show()
-    fig.write_image(os.path.join(directory, "optuna_edf.png"))
-
-    print("--- Optuna optimization took: %s seconds ---" % (time.time() - start_time))
+    except Exception as e:
+        logging.error(f"Error in Optuna visualizations: {e}")
+        raise e
 
     #################################################################################################################
     #                          SMAC optimization process with the best parameters from Optuna                       #
     #################################################################################################################
     
 
-    print("SMAC Optimization with the best parameters from Optuna")
+    try:
+        print("SMAC Optimization with the best parameters from Optuna")
 
-    start_time = time.time()
+        start_time = time.time()
 
-    best_scenario = Scenario(
-        name="SMACPlotting",
-        configspace=configspace,
-        deterministic=True,
-        output_directory=args.working_dir,
-        seed=args.seed,
-        n_trials=args.n_trials,
-        max_budget=args.max_budget,
-        min_budget=args.min_budget,
-        n_workers=args.workers,
-        walltime_limit=args.runtime
-    )
+        best_scenario = Scenario(
+            name="SMACPlotting",
+            configspace=configspace,
+            deterministic=True,
+            output_directory=args.working_dir,
+            seed=args.seed,
+            n_trials=args.n_trials,
+            max_budget=args.max_budget,
+            min_budget=args.min_budget,
+            n_workers=args.workers,
+            walltime_limit=args.runtime
+        )
 
-    best_smac = SMAC4MF(
-        target_function=partial(cnn_from_cfg, fidelity=best_fidelity),
-        scenario=best_scenario,
-        initial_design=SMAC4MF.get_initial_design(scenario=best_scenario, n_configs=3),
-        intensifier=Hyperband(
+        best_smac = SMAC4MF(
+            target_function=partial(cnn_from_cfg, fidelity=best_fidelity),
             scenario=best_scenario,
-            incumbent_selection="highest_budget",
-            eta=args.eta,
-        ),
-        model=SMAC4MF.get_model(best_scenario, **best_params),
-        overwrite=True,
-        logging_level=args.log_level,  
-    )
+            initial_design=SMAC4MF.get_initial_design(scenario=best_scenario, n_configs=3),
+            intensifier=Hyperband(
+                scenario=best_scenario,
+                incumbent_selection="highest_budget",
+                eta=args.eta,
+            ),
+            model=SMAC4MF.get_model(best_scenario, **best_params),
+            overwrite=True,
+            logging_level=args.log_level,  
+        )
 
-    best_incumbent = best_smac.optimize()
+        best_incumbent = best_smac.optimize()
 
-    best_default_cost = best_smac.validate(configspace.get_default_configuration())
-    print(f"Best Default cost ({best_smac.intensifier.__class__.__name__}): {best_default_cost}")
+        best_default_cost = best_smac.validate(configspace.get_default_configuration())
+        print(f"Best Default cost ({best_smac.intensifier.__class__.__name__}): {best_default_cost}")
 
-    best_incumbent_cost = best_smac.validate(best_incumbent)
-    print(f"Best Incumbent cost ({best_smac.intensifier.__class__.__name__}): {best_incumbent_cost}")
+        best_incumbent_cost = best_smac.validate(best_incumbent)
+        print(f"Best Incumbent cost ({best_smac.intensifier.__class__.__name__}): {best_incumbent_cost}")
 
-    facades.append(best_smac)
+        facades.append(best_smac)
 
-    plot_main_trajectory(facades)
+        plot_main_trajectory(facades)
 
-    print("--- Final SMAC optimization took: %s seconds ---" % (time.time() - start_time))
+        print("--- Final SMAC optimization took: %s seconds ---" % (time.time() - start_time))
 
-    # train the final CNN model with the best incumbent
-    start_time = time.time()
-    final_training(best_incumbent, args.seed)
-    print("--- training the final CNN model took: %s seconds ---" % (time.time() - start_time))
+    except Exception as e:
+        logging.error(f"Error in final SMAC optimization: {e}")
+        raise e
+
+    try:
+        # train the final CNN model with the best incumbent
+        start_time = time.time()
+        final_training(best_incumbent, args.seed)
+        print("--- training the final CNN model took: %s seconds ---" % (time.time() - start_time))
+
+    except Exception as e:  
+        logging.error(f"Error in final training: {e}")
+        raise e
