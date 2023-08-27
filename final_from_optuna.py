@@ -44,21 +44,28 @@ CV_SPLIT_SEED = 42
 def configuration_space(
         device: str,
         dataset: str,
-        cv_count: int = 2,
-        budget_type: str = "epoch",
+        cv_count: int = 3,
+        budget_type: str = "img_size",
         datasetpath: str | Path = Path("."),
         cs_file: Optional[str | Path] = None
 ) -> ConfigurationSpace:
+    """Build Configuration Space which defines all parameters and their ranges."""
     if cs_file is None:
+        # This serves only as an example of how you can manually define a Configuration Space
+        # To illustrate different parameter types;
+        # we use continuous, integer and categorical parameters.
         cs = ConfigurationSpace(
             {
-                "n_conv_layers": Constant("n_conv_layers", 2),  # Reduced from 3
-                "use_BN": Constant("use_BN", True),
-                "global_avg_pooling": Constant("global_avg_pooling", True),
-                "n_channels_conv_0": Constant("n_channels_conv_0", 256),  # Reduced from 512
-                "n_channels_conv_1": Constant("n_channels_conv_1", 256),  # Reduced from 512
-                "n_fc_layers": Constant("n_fc_layers", 1),  # Reduced from 3
-                "n_channels_fc_0": Constant("n_channels_fc_0", 256),  # Reduced from 512
+                "n_conv_layers": Integer("n_conv_layers", (1, 3), default=3),
+                "use_BN": Categorical("use_BN", [True, False], default=True),
+                "global_avg_pooling": Categorical("global_avg_pooling", [True, False], default=True),
+                "n_channels_conv_0": Integer("n_channels_conv_0", (32, 512), default=512, log=True),
+                "n_channels_conv_1": Integer("n_channels_conv_1", (16, 512), default=512, log=True),
+                "n_channels_conv_2": Integer("n_channels_conv_2", (16, 512), default=512, log=True),
+                "n_fc_layers": Integer("n_fc_layers", (1, 3), default=3),
+                "n_channels_fc_0": Integer("n_channels_fc_0", (32, 512), default=512, log=True),
+                "n_channels_fc_1": Integer("n_channels_fc_1", (16, 512), default=512, log=True),
+                "n_channels_fc_2": Integer("n_channels_fc_2", (16, 512), default=512, log=True),
                 "batch_size": Integer("batch_size", (1, 1000), default=200, log=True),
                 "learning_rate_init": Float(
                     "learning_rate_init",
@@ -74,12 +81,14 @@ def configuration_space(
             }
         )
 
+        # Add conditions to restrict the hyperparameter space
         use_conv_layer_2 = InCondition(cs["n_channels_conv_2"], cs["n_conv_layers"], [3])
         use_conv_layer_1 = InCondition(cs["n_channels_conv_1"], cs["n_conv_layers"], [2, 3])
 
         use_fc_layer_2 = InCondition(cs["n_channels_fc_2"], cs["n_fc_layers"], [3])
         use_fc_layer_1 = InCondition(cs["n_channels_fc_1"], cs["n_fc_layers"], [2, 3])
 
+        # Add multiple conditions on hyperparameters at once:
         cs.add_conditions([use_conv_layer_2, use_conv_layer_1, use_fc_layer_2, use_fc_layer_1])
     
     else:
@@ -125,8 +134,8 @@ def get_optimizer_and_criterion(
 
 def cnn_from_cfg(
         cfg: Configuration,
-        seed: int,
-        budget: float,
+        seed: int = 0,
+        budget: int = 20,
 ) -> float:
     """
     Creates an instance of the torch_model and fits the given data on it.
@@ -158,7 +167,7 @@ def cnn_from_cfg(
     ds_path = cfg["datasetpath"]
 
     # determine fidelity and used budget
-    epochs = int(np.floor(budget)) 
+    epochs = max(3, int(np.floor(budget)))  
 
     # Device configuration
     torch.manual_seed(seed)
@@ -170,116 +179,6 @@ def cnn_from_cfg(
         input_shape, train_val, _ = load_deep_woods(
             datadir=Path(ds_path, "deepweedsx"),
             resize=(16, 16),
-            balanced="balanced" in dataset,
-            download=download,
-        )
-    else:
-        raise NotImplementedError
-
-    # returns the cross-validation accuracy
-    # to make CV splits consistent
-    cv = StratifiedKFold(n_splits=3, random_state=CV_SPLIT_SEED, shuffle=True)
-
-    score = []
-    cv_splits = cv.split(train_val, train_val.targets)
-    for cv_index, (train_idx, valid_idx) in enumerate(cv_splits, start=1):
-        logging.info(f"Worker:{worker_id} ------------ CV {cv_index} -----------")
-        train_data = Subset(train_val, list(train_idx))
-        val_data = Subset(train_val, list(valid_idx))
-
-        train_loader = DataLoader(
-            dataset=train_data,
-            batch_size=batch_size,
-            shuffle=True,
-        )
-        val_loader = DataLoader(
-            dataset=val_data,
-            batch_size=batch_size,
-            shuffle=False,
-        )
-
-        model = Model(
-            config=cfg,
-            input_shape=input_shape,
-            num_classes=len(train_val.classes),
-        )
-        model = model.to(model_device)
-
-        # summary(model, input_shape, device=device)
-
-        model_optimizer, train_criterion = get_optimizer_and_criterion(cfg)
-        optimizer = model_optimizer(model.parameters(), lr=lr)
-        train_criterion = train_criterion().to(device)
-
-        for epoch in range(epochs):  # 20 epochs
-            logging.info(f"Worker:{worker_id} " + "#" * 50)
-            logging.info(f"Worker:{worker_id} Epoch [{epoch + 1}/{epochs}]")
-            train_score, train_loss = model.train_fn(
-                optimizer=optimizer,
-                criterion=train_criterion,
-                loader=train_loader,
-                device=model_device
-            )
-            # logging.info(f"Worker:{worker_id} => Train accuracy {train_score:.3f} | loss {train_loss}")
-
-        val_score = model.eval_fn(val_loader, device)
-        logging.info(f"Worker:{worker_id} => Val accuracy {val_score:.3f}")
-        score.append(val_score)
-
-    val_error = 1 - np.mean(score)  # because minimize
-
-    results = val_error
-    return results
-
-def cnn_from_cfg_mf(
-        cfg: Configuration,
-        seed: int,
-        fidelity: str,
-        budget: float,
-) -> float:
-    """
-    Creates an instance of the torch_model and fits the given data on it.
-    This is the function-call we try to optimize. Chosen values are stored in
-    the configuration (cfg).
-
-    :param cfg: Configuration (basically a dictionary)
-        configuration chosen by smac
-    :param seed: int or RandomState
-        used to initialize the rf's random generator
-    :param budget: float
-        used to set max iterations for the MLP
-    Returns
-    -------
-    val_accuracy cross validation accuracy
-    """
-    try:
-        worker_id = get_worker().name
-    except ValueError:
-        worker_id = 0
-
-    # If data already existing on disk, set to False
-    download = False
-
-    lr = cfg["learning_rate_init"]
-    dataset = cfg["dataset"]
-    device = cfg["device"]
-    batch_size = cfg["batch_size"]
-    ds_path = cfg["datasetpath"]
-
-    # determine fidelity and used budget
-    img_size = int(np.floor(budget)) if fidelity == "img_size" else 16
-    epochs = int(np.floor(budget)) if fidelity == "epochs" else 10
-
-    # Device configuration
-    torch.manual_seed(seed)
-    model_device = torch.device(device)
-
-    if "fashion_mnist" in dataset:
-        input_shape, train_val, _ = load_fashion_mnist(datadir=Path(ds_path, "FashionMNIST"))
-    elif "deepweedsx" in dataset:
-        input_shape, train_val, _ = load_deep_woods(
-            datadir=Path(ds_path, "deepweedsx"),
-            resize=(img_size, img_size),
             balanced="balanced" in dataset,
             download=download,
         )
@@ -409,75 +308,6 @@ def plot_optuna_trajectories(dictionary):
     plt.legend()
     plt.show()
     plt.savefig(f"visualizations/trajectory_optuna.png")
-
-def plot_seeds_trajectory(results_per_seed: dict) -> None:
-    plt.figure()
-    plt.title("Trajectory")
-    plt.xlabel("Wallclock time [s]")
-    plt.ylabel(next(iter(results_per_seed.values())).scenario.objectives)  # cost
-
-    for (seed, budget_type), facade in results_per_seed.items():
-        logging.info(f"facades {seed} and budget type {budget_type}")
-        X, Y = [], []
-        for item in facade.intensifier.trajectory:
-            # Single-objective optimization
-            assert len(item.config_ids) == 1
-            assert len(item.costs) == 1
-
-            y = item.costs[0]
-            x = item.walltime
-
-            X.append(x)
-            Y.append(y)
-
-        plt.plot(X, Y, label=f"{budget_type} - Seed {seed}")  # Include seed in label
-        plt.scatter(X, Y, marker="x")
-
-    plt.legend()
-    plt.savefig('visualizations/trajectory_seeds.png')
-
-def train_mf_selection(cs: ConfigurationSpace) -> None:
-    results_per_seed = {}
-    fidelity_budgets = {'img_size': (8, 16), 'epochs': (5, 10)}
-
-    for seed in range(2):
-        for fidelity, budgets in fidelity_budgets.items():
-
-            logging.info(f"Budget type: {fidelity} - Seed: {seed}")
-
-            scenario = Scenario(
-                configspace=cs,
-                walltime_limit=300,
-                n_trials=100,
-                deterministic=True,
-                output_directory=Path("./tmp"),
-                min_budget=budgets[0],
-                max_budget=budgets[1],
-                n_workers=16,
-                seed=seed,  # Use a different seed for each run
-                name=f"MFO({fidelity}_Seed{seed})"
-            )
-
-            smac = SMAC4MF(
-                target_function=partial(cnn_from_cfg_mf, fidelity=fidelity),
-                scenario=scenario,
-                initial_design=SMAC4MF.get_initial_design(scenario=scenario, n_configs=2),
-                intensifier=Hyperband(
-                    scenario=scenario,
-                    incumbent_selection="highest_budget",
-                    eta=2,
-                ),
-                overwrite=True,
-                logging_level=20  # https://automl.github.io/SMAC3/main/advanced_usage/8_logging.html
-            )
-
-            smac.optimize()
-            results_per_seed[(seed, fidelity)] = smac
-
-
-    plot_seeds_trajectory(results_per_seed)
-    # get_best_fidelity(facades_list, list(fidelity_budgets.keys()))
-    return
 
 def final_training(
         cfg: Configuration,
@@ -633,7 +463,7 @@ if __name__ == "__main__":
         help="maximal budget (epochs) to use with BOHB",
     )
     parser.add_argument(
-        "--min_budget", type=float, default=5, help="Minimum budget (epochs) for BOHB"
+        "--min_budget", type=float, default=3, help="Minimum budget (epochs) for BOHB"
     )
     parser.add_argument("--eta", type=int, default=2, help="eta for BOHB")
     parser.add_argument("--seed", type=int, default=0, help="random seed")
