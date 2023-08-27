@@ -460,7 +460,7 @@ def train_mf_selection(cs: ConfigurationSpace) -> None:
                 output_directory=Path("./tmp"),
                 min_budget=budgets[0],
                 max_budget=budgets[1],
-                n_workers=20,
+                n_workers=16,
                 seed=seed,  # Use a different seed for each run
                 name=f"MFO({fidelity}_Seed{seed})"
             )
@@ -649,7 +649,7 @@ if __name__ == "__main__":
         "--device", type=str, default="cpu", help="device to run the models"
     )
     parser.add_argument(
-        "--workers", type=int, default=20, help="num of workers to use with BOHB"
+        "--workers", type=int, default=16, help="num of workers to use with BOHB"
     )
     parser.add_argument(
         "--n_trials", type=int, default=500, help="Number of iterations to run SMAC for"
@@ -739,7 +739,7 @@ if __name__ == "__main__":
                 n_trials=100,
                 max_budget=args.max_budget,
                 min_budget=args.min_budget,
-                n_workers=20,
+                n_workers=16,
                 walltime_limit=180,
             )
 
