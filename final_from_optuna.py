@@ -701,15 +701,15 @@ if __name__ == "__main__":
     try:
         start_time = time.time()
 
-        minimal_configspace = configuration_space(
-            device=args.device,
-            dataset=args.dataset,
-            cv_count=args.cv_count,
-            datasetpath=args.datasetpath,
-            cs_file=Path("minimal_configspace.json")
-        )
+        # minimal_configspace = configuration_space(
+        #     device=args.device,
+        #     dataset=args.dataset,
+        #     cv_count=args.cv_count,
+        #     datasetpath=args.datasetpath,
+        #     cs_file=Path("minimal_configspace.json")
+        # )
 
-        train_mf_selection(minimal_configspace)
+        # train_mf_selection(minimal_configspace)
         best_fidelity = "epochs"
 
         logging.info(f"Best fidelity: {best_fidelity}")

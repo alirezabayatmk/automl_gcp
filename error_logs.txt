@@ -1,0 +1,66 @@
+Traceback (most recent call last):
+  File "/opt/conda/lib/python3.10/site-packages/tornado/ioloop.py", line 919, in _run
+    val = self.callback()
+  File "/opt/conda/lib/python3.10/site-packages/distributed/worker_memory.py", line 411, in memory_monitor
+    memory = psutil.Process(process.pid).memory_info().rss
+  File "/opt/conda/lib/python3.10/site-packages/psutil/__init__.py", line 332, in __init__
+    self._init(pid)
+  File "/opt/conda/lib/python3.10/site-packages/psutil/__init__.py", line 361, in _init
+    self.create_time()
+  File "/opt/conda/lib/python3.10/site-packages/psutil/__init__.py", line 714, in create_time
+    self._create_time = self._proc.create_time()
+  File "/opt/conda/lib/python3.10/site-packages/psutil/_pslinux.py", line 1645, in wrapper
+    return fun(self, *args, **kwargs)
+  File "/opt/conda/lib/python3.10/site-packages/psutil/_pslinux.py", line 1855, in create_time
+    ctime = float(self._parse_stat_file()['create_time'])
+  File "/opt/conda/lib/python3.10/site-packages/psutil/_pslinux.py", line 1645, in wrapper
+    return fun(self, *args, **kwargs)
+  File "/opt/conda/lib/python3.10/site-packages/psutil/_common.py", line 446, in wrapper
+    return fun(self)
+  File "/opt/conda/lib/python3.10/site-packages/psutil/_pslinux.py", line 1687, in _parse_stat_file
+    data = bcat("%s/%s/stat" % (self._procfs_path, self.pid))
+  File "/opt/conda/lib/python3.10/site-packages/psutil/_common.py", line 776, in bcat
+    return cat(fname, fallback=fallback, _open=open_binary)
+  File "/opt/conda/lib/python3.10/site-packages/psutil/_common.py", line 764, in cat
+    with _open(fname) as f:
+  File "/opt/conda/lib/python3.10/site-packages/psutil/_common.py", line 728, in open_binary
+    return open(fname, "rb", buffering=FILE_READ_BUFFER_SIZE)
+OSError: [Errno 24] Too many open files: '/proc/12595/stat'
+2023-08-27 12:17:04,561 - tornado.application - ERROR - Exception in callback functools.partial(<bound method NannyMemoryManager.memory_monitor of <distributed.worker_memory.NannyMemoryManager object at 0x7f859f3d80a0>>, <Nanny: tcp://127.0.0.1:33211, threads: 1>)
+Traceback (most recent call last):
+  File "/opt/conda/lib/python3.10/site-packages/psutil/_common.py", line 443, in wrapper
+    ret = self._cache[fun]
+AttributeError: 'Process' object has no attribute '_cache'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/opt/conda/lib/python3.10/site-packages/tornado/ioloop.py", line 919, in _run
+    val = self.callback()
+  File "/opt/conda/lib/python3.10/site-packages/distributed/worker_memory.py", line 411, in memory_monitor
+    memory = psutil.Process(process.pid).memory_info().rss
+  File "/opt/conda/lib/python3.10/site-packages/psutil/__init__.py", line 332, in __init__
+    self._init(pid)
+  File "/opt/conda/lib/python3.10/site-packages/psutil/__init__.py", line 361, in _init
+    self.create_time()
+  File "/opt/conda/lib/python3.10/site-packages/psutil/__init__.py", line 714, in create_time
+    self._create_time = self._proc.create_time()
+  File "/opt/conda/lib/python3.10/site-packages/psutil/_pslinux.py", line 1645, in wrapper
+    return fun(self, *args, **kwargs)
+  File "/opt/conda/lib/python3.10/site-packages/psutil/_pslinux.py", line 1855, in create_time
+    ctime = float(self._parse_stat_file()['create_time'])
+  File "/opt/conda/lib/python3.10/site-packages/psutil/_pslinux.py", line 1645, in wrapper
+    return fun(self, *args, **kwargs)
+  File "/opt/conda/lib/python3.10/site-packages/psutil/_common.py", line 446, in wrapper
+    return fun(self)
+  File "/opt/conda/lib/python3.10/site-packages/psutil/_pslinux.py", line 1687, in _parse_stat_file
+    data = bcat("%s/%s/stat" % (self._procfs_path, self.pid))
+  File "/opt/conda/lib/python3.10/site-packages/psutil/_common.py", line 776, in bcat
+    return cat(fname, fallback=fallback, _open=open_binary)
+  File "/opt/conda/lib/python3.10/site-packages/psutil/_common.py", line 764, in cat
+    with _open(fname) as f:
+  File "/opt/conda/lib/python3.10/site-packages/psutil/_common.py", line 728, in open_binary
+    return open(fname, "rb", buffering=FILE_READ_BUFFER_SIZE)
+OSError: [Errno 24] Too many open files: '/proc/8378/stat'
+2023-08-27 12:17:04,562 - tornado.application - ERROR - Exception in callback functools.partial(<bound method NannyMemoryManager.memory_monitor of <distributed.worker_memory.NannyMemoryManager object at 0x7f8663e82110>>, <Nanny: tcp://127.0.0.1:33025, threads: 1>)
+Traceback (most recent call last):
