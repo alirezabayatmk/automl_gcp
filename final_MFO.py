@@ -271,8 +271,8 @@ def cnn_from_cfg_mf(
     ds_path = cfg["datasetpath"]
 
     # determine fidelity and used budget
-    img_size = int(np.floor(budget)) if fidelity == "img_size" else 32
-    epochs = int(np.floor(budget)) if fidelity == "epochs" else 20
+    img_size = int(np.floor(budget)) if fidelity == "img_size" else 16
+    epochs = int(np.floor(budget)) if fidelity == "epochs" else 10
 
     # Device configuration
     torch.manual_seed(seed)
@@ -444,9 +444,9 @@ def plot_seeds_trajectory(results_per_seed: dict) -> None:
 
 def train_mf_selection(cs: ConfigurationSpace) -> None:
     results_per_seed = {}
-    fidelity_budgets = {'img_size': (8, 32), 'epochs': (5, 20)}
+    fidelity_budgets = {'img_size': (8, 16), 'epochs': (5, 10)}
 
-    for seed in range(3):
+    for seed in range(2):
         for fidelity, budgets in fidelity_budgets.items():
 
             logging.info(f"Budget type: {fidelity} - Seed: {seed}")
@@ -712,7 +712,8 @@ if __name__ == "__main__":
         train_mf_selection(minimal_configspace)
         best_fidelity = "epochs"
 
-        print("--- Multi-fidelity selection took: %s seconds ---" % (time.time() - start_time))
+        logging.info(f"Best fidelity: {best_fidelity}")
+        logging.info(f"--- Multi-fidelity selection took: {time.time() - start_time} seconds ---")
 
     except Exception as e:
         logging.error(f"Error in multi-fidelity selection: {e}")
@@ -763,12 +764,12 @@ if __name__ == "__main__":
         
         
         # create Optuna study object and optimize the objective function
-        print("Optuna Optimization started")
+        logging.info("Optuna Optimization started")
         study = optuna.create_study(direction="minimize", study_name="SMAC_HPO")
         study.optimize(objective, n_trials=20, n_jobs=-1)
 
         best_params = study.best_params
-        print("Best Optuna Parameters:", best_params)
+        logging.info(f"Best optuna parameters: {best_params}")
 
         with open(Path(args.working_dir, "optuna_best_params.json"), "w") as fh:
             json.dump(best_params, fh)
@@ -813,7 +814,7 @@ if __name__ == "__main__":
         fig.show()
         fig.write_image("optuna_edf.png")
 
-        print("--- Optuna optimization took: %s seconds ---" % (time.time() - start_time))
+        logging.info(f"--- Optuna optimization took: {time.time() - start_time} seconds ---")
 
     except Exception as e:
         logging.error(f"Error in Optuna visualizations: {e}")
@@ -825,7 +826,7 @@ if __name__ == "__main__":
     
 
     try:
-        print("SMAC Optimization with the best parameters from Optuna")
+        logging.info("Final SMAC Optimization started")
 
         start_time = time.time()
 
@@ -859,16 +860,16 @@ if __name__ == "__main__":
         best_incumbent = best_smac.optimize()
 
         best_default_cost = best_smac.validate(configspace.get_default_configuration())
-        print(f"Best Default cost ({best_smac.intensifier.__class__.__name__}): {best_default_cost}")
+        logging.info(f"Best Default cost ({best_smac.intensifier.__class__.__name__}): {best_default_cost}")
 
         best_incumbent_cost = best_smac.validate(best_incumbent)
-        print(f"Best Incumbent cost ({best_smac.intensifier.__class__.__name__}): {best_incumbent_cost}")
+        logging.info(f"Best Incumbent cost ({best_smac.intensifier.__class__.__name__}): {best_incumbent_cost}")
 
         facades.append(best_smac)
 
         plot_main_trajectory(facades)
 
-        print("--- Final SMAC optimization took: %s seconds ---" % (time.time() - start_time))
+        logging.info(f"--- Final SMAC optimization took: {time.time() - start_time} seconds ---")
 
     except Exception as e:
         logging.error(f"Error in final SMAC optimization: {e}")
@@ -879,7 +880,7 @@ if __name__ == "__main__":
         # train the final CNN model with the best incumbent
         start_time = time.time()
         final_training(best_incumbent, args.seed)
-        print("--- training the final CNN model took: %s seconds ---" % (time.time() - start_time))
+        logging.info(f"--- Final CNN training with best incumbent took: {time.time() - start_time} seconds ---")
 
     except Exception as e:  
         logging.error(f"Error in final training: {e}")
