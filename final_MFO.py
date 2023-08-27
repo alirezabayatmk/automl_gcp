@@ -49,7 +49,6 @@ def configuration_space(
         datasetpath: str | Path = Path("."),
         cs_file: Optional[str | Path] = None
 ) -> ConfigurationSpace:
-    """Build Configuration Space which defines all parameters and their ranges."""
     if cs_file is None:
         cs = ConfigurationSpace(
             {

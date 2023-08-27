@@ -1,0 +1,8 @@
+0. review the code
+1. DocStrings and code readability
+2. update readme.md
+3. justify manual decisions
+4. compute infrastructure
+5. design decisions have to be made automatically
+6. better comments and logs
+7. watch out for 6 hours!
