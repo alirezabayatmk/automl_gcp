@@ -45,7 +45,7 @@ def configuration_space(
         device: str,
         dataset: str,
         cv_count: int = 3,
-        budget_type: str = "img_size",
+        budget_type: str = "epoch",
         datasetpath: str | Path = Path("."),
         cs_file: Optional[str | Path] = None
 ) -> ConfigurationSpace:
@@ -571,7 +571,7 @@ if __name__ == "__main__":
         # create Optuna study object and optimize the objective function
         logging.info("Optuna Optimization started")
         study = optuna.create_study(direction="minimize", study_name="SMAC_HPO")
-        study.optimize(objective, n_trials=20, n_jobs=4)
+        study.optimize(objective, n_trials=5, n_jobs=1)
 
         best_params = study.best_params
         logging.info(f"Best optuna parameters: {best_params}")
