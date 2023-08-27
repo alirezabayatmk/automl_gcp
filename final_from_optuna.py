@@ -135,7 +135,7 @@ def get_optimizer_and_criterion(
 def cnn_from_cfg(
         cfg: Configuration,
         seed: int = 0,
-        budget: int = 20,
+        budget: int = 15,
 ) -> float:
     """
     Creates an instance of the torch_model and fits the given data on it.
@@ -167,7 +167,7 @@ def cnn_from_cfg(
     ds_path = cfg["datasetpath"]
 
     # determine fidelity and used budget
-    epochs = max(3, int(np.floor(budget)))  
+    epochs = max(5, int(np.floor(budget)))  
 
     # Device configuration
     torch.manual_seed(seed)
@@ -178,7 +178,7 @@ def cnn_from_cfg(
     elif "deepweedsx" in dataset:
         input_shape, train_val, _ = load_deep_woods(
             datadir=Path(ds_path, "deepweedsx"),
-            resize=(16, 16),
+            resize=(32, 32),
             balanced="balanced" in dataset,
             download=download,
         )
@@ -245,13 +245,11 @@ def optimize_smac_hyperparameters(trial):
     n_trees = trial.suggest_int("n_trees", 10, 25)
     ratio_features = trial.suggest_float("ratio_features", 0.7, 1.0)
     min_samples_split = trial.suggest_int("min_samples_split", 2, 10)
-    min_samples_leaf = trial.suggest_int("min_samples_leaf", 1, 10)
 
     return {
         "n_trees": n_trees,
         "ratio_features": ratio_features,
         "min_samples_split": min_samples_split,
-        "min_samples_leaf": min_samples_leaf,
     }
 
 def plot_main_trajectory(facades: list[AbstractFacade], plot_name: str = 'epoch') -> None:
@@ -402,7 +400,7 @@ def final_training(
         optimizer = model_optimizer(model.parameters(), lr=lr)
         train_criterion = train_criterion().to(device)
 
-        for epoch in range(20):  # 20 epochs
+        for epoch in range(15):  # 20 epochs
             logging.info(f"Worker:{worker_id} " + "#" * 50)
             logging.info(f"Worker:{worker_id} Epoch [{epoch + 1}/{20}]")
             train_score, train_loss = model.train_fn(
@@ -452,18 +450,18 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--runtime",
-        default=15000,
+        default=10000,
         type=int,
         help="Running time (seconds) allocated to run the algorithm",
     )
     parser.add_argument(
         "--max_budget",
         type=float,
-        default=20,
+        default=15,
         help="maximal budget (epochs) to use with BOHB",
     )
     parser.add_argument(
-        "--min_budget", type=float, default=3, help="Minimum budget (epochs) for BOHB"
+        "--min_budget", type=float, default=5, help="Minimum budget (epochs) for BOHB"
     )
     parser.add_argument("--eta", type=int, default=2, help="eta for BOHB")
     parser.add_argument("--seed", type=int, default=0, help="random seed")
@@ -471,10 +469,10 @@ if __name__ == "__main__":
         "--device", type=str, default="cpu", help="device to run the models"
     )
     parser.add_argument(
-        "--workers", type=int, default=16, help="num of workers to use with BOHB"
+        "--workers", type=int, default=14, help="num of workers to use with BOHB"
     )
     parser.add_argument(
-        "--n_trials", type=int, default=500, help="Number of iterations to run SMAC for"
+        "--n_trials", type=int, default=200, help="Number of iterations to run SMAC for"
     )
     parser.add_argument(
         "--cv_count",
@@ -541,11 +539,11 @@ if __name__ == "__main__":
                 deterministic=True,
                 output_directory=args.working_dir,
                 seed=args.seed,
-                n_trials=100,
+                n_trials=50,
                 max_budget=args.max_budget,
                 min_budget=args.min_budget,
-                n_workers=16,
-                walltime_limit=180,
+                n_workers=10,
+                walltime_limit=120,
             )
 
             smac = SMAC4MF(
